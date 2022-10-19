@@ -25,6 +25,7 @@
 namespace leycommediasolutions\FrontendBuilder;
 
 use leycommediasolutions\FrontendBuilder\DependencyInjection\FrontendBuilderExtension;
+use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 use Symfony\Component\HttpKernel\Bundle\Bundle;
 
 class FrontendBuilderBundle extends Bundle
@@ -32,7 +33,7 @@ class FrontendBuilderBundle extends Bundle
     /**
      * {@inheritdoc}
      */
-    public function getContainerExtension()
+    public function getContainerExtension(): ?ExtensionInterface
     {
         return new FrontendBuilderExtension();
     }

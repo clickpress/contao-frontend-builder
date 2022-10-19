@@ -24,45 +24,88 @@
 
 namespace leycommediasolutions\FrontendBuilder;
 
+use Contao\CoreBundle\Routing\ScopeMatcher;
+use Contao\Database;
+use Contao\Input;
+use Contao\StringUtil;
+use Contao\System;
+use leycommediasolutions\contao_elementsets\ElementSets;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Security\Core\User\UserInterface;
+
+use Symfony\Component\Security\Csrf\CsrfToken;
+use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
+
+use function in_array;
 
 class FrontendHooks
 {
-	/**
-	 * @var array
-	 */
-	private $backendModules = [];
+	private array $backendModules;
+    private RequestStack $requestStack;
+    private ScopeMatcher $scopeMatcher;
+    private CsrfTokenManagerInterface $csrfTokenManager;
+    private string $csrfTokenName;
 
-	/**
-	 * @param array $backendModules Backend modules configuration array
-	 * 
-	 */
-	public function __construct(array $backendModules = [])
-	{
-		$this->backendModules = $backendModules; 
-	}
+    public function __construct(
+        array $backendModules = [],
+        CsrfTokenManagerInterface $csrfTokenManager,
+        string $csrfTokenName,
+        RequestStack $requestStack,
+        ScopeMatcher $scopeMatcher,
+        )
+    {
+        $this->csrfTokenManager = $csrfTokenManager;
+        $this->csrfTokenName = $csrfTokenName;
+        $this->requestStack = $requestStack;
+        $this->scopeMatcher = $scopeMatcher;
+        $this->backendModules = $backendModules;
+    }
+    public function isBackend(): bool
+    {
+        return $this->scopeMatcher->isBackendRequest($this->requestStack->getCurrentRequest());
+    }
+
+    public function isFrontend(): bool
+    {
+        return $this->scopeMatcher->isFrontendRequest($this->requestStack->getCurrentRequest());
+    }
+    public function generateToken(): string
+    {
+        return $this->csrfTokenManager->getToken($this->csrfTokenName)->getValue();
+    }
+
+    public function checkToken(string $tokenValue): bool
+    {
+        $token = new CsrfToken($this->csrfTokenName, $tokenValue);
+
+        return $this->csrfTokenManager->isTokenValid($token);
+    }
 	/**
 	 * parseFrontendTemplate hook
 	 *
-	 * @param  string $content  html content
-	 * @param  string $template template name
+	 * @param string $content  html content
+	 * @param string $template template name
 	 * @return string           modified $content
 	 */
-	public function parseFrontendTemplateHook($content, $template)
-	{
-		if (!($permissions = static::checkLogin()) || !$template) {
+	public function parseFrontendTemplateHook(string $content, string $template): string
+    {
+        if(!$template) {
+            return $content;
+        }
+
+		if (!($permissions = static::checkLogin())) {
 			return $content;
 		}
 		$data = array();
-		if(preg_match('(<([a-zA-Z]+).*?>)is', $content, $tag) && $tag[1] !== "script" ){
-			$data = array(
+		if(preg_match('(<([a-zA-Z]+).*?>)is', $content, $tag) && $tag[1] !== 'script' ){
+			$data = [
 				'template' => $template,
-			);
+            ];
 			// get the first tag
 			if (preg_match('(<[a-z0-9]+\\s(?>"[^"]*"|\'[^\']*\'|[^>"\'])+)is', $content, $matches)) {
 				if (preg_match('(^(.*\\sid="[^"]*)article-([0-9]+))is', $matches[0], $matches2)) {
 					$data['links']['article'] = array();
-					\System::loadLanguageFile('tl_content');
+					System::loadLanguageFile('tl_content');
 					$data['links']['pastenew'] = array(
 						'url' => static::getBackendURL('article', 'tl_content', $matches2[2], 'create', array('mode' => 2, 'pid' => $matches2[2])),
 						'label' => $GLOBALS['TL_LANG']['tl_content']['pastenew'][0],
@@ -70,26 +113,25 @@ class FrontendHooks
 				}
 			}
 
-			return static::insertData($content, $data);
+			return $this->insertData($content, $data);
 		}
 		return $content;
 	}
 
-	public function myGetArticle($objRow)
-	{
-		$database = \Database::getInstance();
-		$cols = array("main");
+	public function myGetArticle($objRow): void
+    {
+		$database = Database::getInstance();
+		$cols = ['main'];
 
-		$layout = "";
-
-		$page = $database->prepare("SELECT * FROM tl_page WHERE id=?")
+        $page = $database->prepare("SELECT * FROM tl_page WHERE id=?")
 						 ->limit(1)
 						 ->execute($objRow->pid);
 						
 		if($page->includeLayout && $page->layout){
 			//LAYOUT WURDE VERGEBEN
 		}else{
-			while(!$page_parent->includeLayout && !$page_parent->layout){
+            $page_parent = null;
+            while(!$page_parent->includeLayout && !$page_parent->layout){
 				if($page_parent->id){
 					$new_pid = $page_parent->id;
 				}else{
@@ -105,41 +147,39 @@ class FrontendHooks
 							->limit(1)
 							->execute($layout_id);
 
-		if (\in_array($layout->modules_frontendbuilder_row, array('2rwh', '3rw')))
+		if (in_array($layout->modules_frontendbuilder_row, array('2rwh', '3rw')))
 		{
 			$cols[] = 'header';
 		}
 
-		if (\in_array($layout->modules_frontendbuilder_cols, array('2cll', '3cl')))
+		if (in_array($layout->modules_frontendbuilder_cols, array('2cll', '3cl')))
 		{
 			$cols[] = 'left';
 		}
 
-		if (\in_array($layout->modules_frontendbuilder_cols, array('2clr', '3cl')))
+		if (in_array($layout->modules_frontendbuilder_cols, array('2clr', '3cl')))
 		{
 			$cols[] = 'right';
 		}
 
-		if (\in_array($layout->modules_frontendbuilder_row, array('2rwf', '3rw')))
+		if (in_array($layout->modules_frontendbuilder_row, array('2rwf', '3rw')))
 		{
 			$cols[] = 'footer';
 		}
 		if ($layout->modules_frontendbuilder_custom)
 		{
-			$custom_modules = deserialize($layout->modules_frontendbuilder_custom, true);
-			for($ix=0; $ix<count($custom_modules); $ix++){
+
+			$custom_modules = StringUtil::deserialize($layout->modules_frontendbuilder_custom, true);
+			for($ix=0, $ixMax = count($custom_modules); $ix< $ixMax; $ix++){
 				$cols[] = $custom_modules[$ix];
 			}
-		}		
-		if($objRow->inColumn){
-			if (\in_array($objRow->inColumn, $cols))
-			{
-				$arrCSS = deserialize($objRow->cssID, true);
-				// use trim() to remove the leading space if $arrCSS[1] is empty
-				$arrCSS[1] = trim($arrCSS[1] . ' fbly_accept');
-				$objRow->cssID = serialize($arrCSS);				
-			}
 		}
+		if($objRow->inColumn && in_array($objRow->inColumn, $cols, true)) {
+            $arrCSS = StringUtil::deserialize($objRow->cssID, true);
+            // use trim() to remove the leading space if $arrCSS[1] is empty
+            $arrCSS[1] = trim($arrCSS[1] . ' fbly_accept');
+            $objRow->cssID = serialize($arrCSS);
+        }
 	}
 
 	/**
@@ -193,29 +233,29 @@ class FrontendHooks
 			}
 		}
 
-		\System::loadLanguageFile('tl_content');
+		System::loadLanguageFile('tl_content');
 		$data['links']['pastenew'] = array(
 			'url' => static::getBackendURL($do, 'tl_content', $row->pid, 'create', array('mode' => 1, 'pid' => $row->id)),
 			'label' => sprintf($GLOBALS['TL_LANG']['tl_content']['pastenew'][1], $row->id),
 		);
 
-		return static::insertData($content, $data);
+		return $this->insertData($content, $data);
 	}
 
 	/**
 	 * checks if a Backend User is logged in
 	 *
-	 * @return array|boolean false if the user isn't logged in otherwise the permissions array
+	 * @return boolean false if the user isn't logged in otherwise the permissions array
 	 */
-	public static function checkLogin()
+	public function checkLogin(): bool
 	{
 		// Only try to authenticate in the front end
-		if (TL_MODE !== 'FE') {
+		if ($this->isBackend()) {
 			return false;
 		}
 
 		// Do not create a user instance if there is no authentication cookie
-		if (! is_subclass_of('BackendUser', UserInterface::class) && ! \Input::cookie('BE_USER_AUTH')) {
+		if (! is_subclass_of('BackendUser', UserInterface::class) && ! Input::cookie('BE_USER_AUTH')) {
 			return false;
 		}
 		$User = UserClass::getInstance();
@@ -225,28 +265,29 @@ class FrontendHooks
 		}
 		if ($User->frontendbuilder) {
 			return true;
-		}else{
-			return false;
 		}
-		if ($User->isAdmin) {
-			return true;
-		}
+
+        if ($User->isAdmin) {
+            return true;
+        }
+
 		return false;
 	}
 
-	/**
-	 * create backend edit URL
-	 *
-	 * @param  string $do
-	 * @param  string $table
-	 * @param  string $id
-	 * @param  string $act
-	 * @return string
-	 */
-	protected static function getBackendURL($do, $table, $id, $act = 'edit', array $params = array())
-	{
-		$addParams = array();
-		foreach (array('do', 'table', 'act', 'id') as $key) {
+    /**
+     * create backend edit URL
+     *
+     * @param string $do
+     * @param string $table
+     * @param string $id
+     * @param string $act
+     * @param array $params
+     * @return string
+     */
+	protected function getBackendURL(string $do, string $table, string $id, string $act = 'edit', array $params = array()): string
+    {
+		$addParams = [];
+		foreach (['do', 'table', 'act', 'id'] as $key) {
 			if ($$key) {
 				$addParams[$key] = $$key;
 			}
@@ -256,10 +297,10 @@ class FrontendHooks
 		// E.g. `?node=2&do=article` doesn’t work while `?do=article&node=2` does.
 		$params = array_merge($addParams, $params);
 
-		$params['rt'] = REQUEST_TOKEN;
+		$params['rt'] = $this->generateToken();
 		$params['fblyr'] = 1;
 
-		$url = \System::getContainer()->get('router')->generate('contao_backend');
+		$url = System::getContainer()->get('router')->generate('contao_backend');
 
 		// Third parameter is required because of arg_separator.output
 		$url .= '?' . http_build_query($params, null, '&');
@@ -271,9 +312,9 @@ class FrontendHooks
 	 * create the select pptions
 	 * Compatibility for ce-access extension
 	 * 
-	 * @param  array $frontenddata
-	 * @param  array $frontendElement
-	 * @param  string $v
+	 * @param array $frontenddata
+	 * @param array $frontendElement
+	 * @param string $v
 	 * @param  string $kk
 	 * @return string
 	 */
@@ -282,11 +323,12 @@ class FrontendHooks
 	// }
 
 
-	public function createSelect($frontenddata, $frontendElement,$v){
+	public function createSelect(array $frontenddata, array $frontendElement, array $v): string
+    {
 		foreach (array_keys($v) as $kk)
 		{
 			$editAllowed = true;
-			if(class_exists('CeAccess') && !in_array($kk , (array)UserClass::getInstance()->elements) && !UserClass::getInstance()->isAdmin){
+			if(class_exists('CeAccess') && !in_array($kk, (array)UserClass::getInstance()->elements, true) && !UserClass::getInstance()->isAdmin){
 				$editAllowed = false;
 			}
 			if($editAllowed){
@@ -373,18 +415,18 @@ class FrontendHooks
 		}
 
 		//FEHLER
-		\System::loadLanguageFile('default');
-		\System::loadLanguageFile('CTE');
-		\System::loadLanguageFile('MOD');
-		\System::loadLanguageFile('FMD');
-		\System::loadLanguageFile('modules');
+		System::loadLanguageFile('default');
+		System::loadLanguageFile('CTE');
+		System::loadLanguageFile('MOD');
+		System::loadLanguageFile('FMD');
+		System::loadLanguageFile('modules');
 
 		$User = UserClass::getInstance();
 
 		$output = "";
 
 		$frontendElement = $this->backendModules;
-		$frontendtext = \Database::getInstance()
+		$frontendtext = Database::getInstance()
 			->prepare("SELECT * FROM tl_frontendbuilder WHERE language=?")
 			->execute($GLOBALS["TL_LANGUAGE"]);
 
@@ -410,7 +452,7 @@ class FrontendHooks
 
 				$pre = array('/\s/', '/\//', '/\*/', '/\+/', '/\#/', '/\~/', '/\"/', '/\§/', '/\$/', '/\!/', '/\%/', '/\&/', '/\(/', '/\)/', '/\=/', '/\?/', '/\´/', '/\{/', '/\[/', '/\]/', '/\}/', '/\>/', '/\</', '/\|/', '/\:/', '/\./', '/\,/', '/\;/');
 
-				if(class_exists(\leycommediasolutions\contao_elementsets\ElementSets::class) && $k == 'elementset' ){
+				if(class_exists(ElementSets::class) && $k === 'elementset' ){
 					if($content_select = FrontendHooks::createSelect($frontenddata, $frontendElement,$v)){
 						$output .= '<div class="fbly_select_itemHolder fbly_select_close_'. preg_replace($pre, '_', $k) .'"><h3><span>'. $label_group  .'</span></h3>';
 						$output .= '<div class="inside_fbly_select_itemHolder">';
@@ -432,7 +474,7 @@ class FrontendHooks
 							$output .= '<div class="fbly_select_itemHolder fbly_select_close_'. preg_replace($pre, '_', $k) .'_'.preg_replace($pre, '_',strtolower($name)) . '"><h3><span>'. $name  .'</span></h3>';
 							$output .= '<div class="inside_fbly_select_itemHolder">';
 								foreach($attr as $attr_detail){
-									$icon = \FilesModel::findByUuid($attr_detail["preview_image"])->path;
+									$icon = FilesModel::findByUuid($attr_detail["preview_image"])->path;
 									$output .= 
 									'<div class="fbly_select_item draggable_item" data-value="elementset" data-elementset="'.$attr_detail["id"].'" draggable="true" ondragstart="event.dataTransfer.setData(\'text/plain\',null)">
 										<div class="headline matchHeight"><span>'.$attr_detail["title"].'</span></div>
@@ -446,7 +488,7 @@ class FrontendHooks
 					}
 				}
 
-				if(class_exists(\leycommediasolutions\contao_elementsets\ElementSets::class) && $k != 'elementset'){
+				if(class_exists(ElementSets::class) && $k != 'elementset'){
 					if($content_select = FrontendHooks::createSelect($frontenddata, $frontendElement,$v)){
 						$output .= '<div class="fbly_select_itemHolder fbly_select_close_'. preg_replace($pre, '_', $k) .'"><h3><span>'. $label_group  .'</span></h3>';
 						$output .= '<div class="inside_fbly_select_itemHolder">';
@@ -456,7 +498,7 @@ class FrontendHooks
 					}
 				}
 
-				if(!class_exists(\leycommediasolutions\contao_elementsets\ElementSets::class)){
+				if(!class_exists(ElementSets::class)){
 					if($content_select = FrontendHooks::createSelect($frontenddata, $frontendElement,$v)){
 						$output .= '<div class="fbly_select_itemHolder fbly_select_close_'. preg_replace('/\s/', '_', $k) .'"><h3><span>'. $label_group  .'</span></h3>';
 						$output .= '<div class="inside_fbly_select_itemHolder">';

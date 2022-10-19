@@ -10,7 +10,7 @@ $GLOBALS['TL_HOOKS']['getAttributesFromDca'][] = array('frontend_builder.backend
 
 
 // Add Stickyfooter files
-if(TL_MODE == 'BE')
+/*if(TL_MODE == 'BE')
 {
     $assetsDir = 'bundles/frontendbuilder/backend';
     $GLOBALS['TL_JAVASCRIPT'][] = $assetsDir . '/js/main.js';
@@ -21,7 +21,7 @@ array_insert($GLOBALS['BE_MOD']['content'], 8, array
 	(
         'tables'      => array('tl_frontendbuilder'),
 	)
-));
+));*/
 
 
 

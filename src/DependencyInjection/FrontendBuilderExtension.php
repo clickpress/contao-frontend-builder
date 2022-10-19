@@ -35,7 +35,7 @@ class FrontendBuilderExtension extends Extension
 	/**
 	 * {@inheritdoc}
 	 */
-	public function getAlias()
+	public function getAlias(): string
 	{
 		return 'frontend_builder';
 	}
@@ -43,7 +43,7 @@ class FrontendBuilderExtension extends Extension
 	/**
 	 * {@inheritdoc}
 	 */
-	public function load(array $configs, ContainerBuilder $container)
+	public function load(array $configs, ContainerBuilder $container): void
 	{
 		$baseConfig = Yaml::parse(file_get_contents(__DIR__.'/../Resources/config/config.yml'), Yaml::PARSE_CONSTANT);
 		$configs = array_merge([$baseConfig['frontend_builder']], $configs);
